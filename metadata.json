@@ -1,0 +1,6 @@
+{
+  "name": "Compass26",
+  "description": "A mobile-first real-time navigation assistant and interactive venue guide for stadium visitors.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
