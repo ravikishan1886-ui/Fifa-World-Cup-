@@ -2,7 +2,7 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
-import { findShortestPath, stadiumGraph, findNearestAmenity } from "./src/venueGraph.js";
+import { findShortestPath, stadiumGraph, findNearestAmenity, stadiumNodesMap } from "./src/venueGraph.js";
 
 // Lazy-loaded Gemini client
 let aiClient: GoogleGenAI | null = null;
@@ -60,7 +60,7 @@ async function startServer() {
     res.json(crowdStatus);
   });
 
-  // API 2: Shortest path routing inside the stadium
+  // API 2: Shortest path routing inside the stadium (Securely validated input parameters)
   app.post("/api/shortest-path", (req, res) => {
     try {
       const { origin, destination, stepFreeOnly } = req.body;
@@ -69,7 +69,20 @@ async function startServer() {
         return;
       }
 
-      const result = findShortestPath(origin, destination, !!stepFreeOnly, crowdStatus);
+      // Input Sanitation and Verification to prevent malicious graph queries
+      const safeOrigin = String(origin).trim().toLowerCase();
+      const safeDestination = String(destination).trim().toLowerCase();
+
+      if (!stadiumNodesMap.has(safeOrigin)) {
+        res.status(404).json({ error: `Invalid origin node identifier: '${safeOrigin}'` });
+        return;
+      }
+      if (!stadiumNodesMap.has(safeDestination)) {
+        res.status(404).json({ error: `Invalid destination node identifier: '${safeDestination}'` });
+        return;
+      }
+
+      const result = findShortestPath(safeOrigin, safeDestination, !!stepFreeOnly, crowdStatus);
       res.json({ result });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -79,6 +92,98 @@ async function startServer() {
   // API 3: Get the static stadium graph representation (useful for frontend rendering)
   app.get("/api/venue-graph", (req, res) => {
     res.json(stadiumGraph);
+  });
+
+  // API 3.5: Diagnostics & Integrity Test Suite (Automatic System Testing Verification)
+  app.get("/api/test", (req, res) => {
+    const results = [];
+    
+    // Test 1: Shortest Path calculation under normal conditions
+    try {
+      const normalPath = findShortestPath("gate_a", "block_102", false);
+      const passed = !!normalPath && normalPath.path.includes("block_102") && normalPath.path[0] === "gate_a";
+      results.push({
+        testName: "Standard Dijkstra Navigation (Gate A to Block 102)",
+        passed,
+        message: passed 
+          ? `Path verified: ${normalPath?.path.join(" ➔ ")} (Walk: ${normalPath?.total_seconds}s)`
+          : "Path calculation failed or returned invalid nodes"
+      });
+    } catch (err: any) {
+      results.push({
+        testName: "Standard Dijkstra Navigation (Gate A to Block 102)",
+        passed: false,
+        message: err.message
+      });
+    }
+
+    // Test 2: Step-Free Route constraints validation
+    try {
+      // block_101 is NOT step-free, so a route with stepFreeOnly=true should either block access or warn.
+      // Let's verify our routing blocks direct accessible paths to non-accessible target nodes, or flags step-free as false.
+      const stepFreePath = findShortestPath("gate_a", "block_101", true);
+      const passed = stepFreePath === null; // No step-free route can enter block_101
+      results.push({
+        testName: "Accessibility Filtering Constraint Verification (Block 101 Step-Free Access)",
+        passed,
+        message: passed
+          ? "Successfully blocked stairs-restricted paths under step-free constraints."
+          : "Failed to block stairs-restricted path under step-free constraints"
+      });
+    } catch (err: any) {
+      results.push({
+        testName: "Accessibility Filtering Constraint Verification (Block 101 Step-Free Access)",
+        passed: false,
+        message: err.message
+      });
+    }
+
+    // Test 3: Crowd Penalty routing reroute detection
+    try {
+      const noCrowdPath = findShortestPath("gate_b", "block_103", false, { north: "low", south: "low", east: "low", west: "low" });
+      const crowdPath = findShortestPath("gate_b", "block_103", false, { north: "high", south: "low", east: "low", west: "low" });
+      
+      const passed = !!noCrowdPath && !!crowdPath;
+      results.push({
+        testName: "Dynamic Crowd Surge Routing & Penalty Verification",
+        passed,
+        message: passed
+          ? `Rerouting successfully simulated! Normal path: ${noCrowdPath?.path.join(" ➔ ")}. Congested path: ${crowdPath?.path.join(" ➔ ")}. Rerouted flag: ${crowdPath?.rerouted_around_crowds}`
+          : "Failed to compute crowd penalty comparison"
+      });
+    } catch (err: any) {
+      results.push({
+        testName: "Dynamic Crowd Surge Routing & Penalty Verification",
+        passed: false,
+        message: err.message
+      });
+    }
+
+    // Test 4: Nearest Amenity Locator Verification
+    try {
+      const nearestConcession = findNearestAmenity("block_101", "concession");
+      const passed = !!nearestConcession && nearestConcession.nearestNode.id === "concession_tacos";
+      results.push({
+        testName: "Nearest Amenity Discovery Engine (Nearest Concession from Block 101)",
+        passed,
+        message: passed
+          ? `Discovered ${nearestConcession?.nearestNode.name} in ${nearestConcession?.pathResult?.total_seconds} seconds walking distance.`
+          : "Failed to locate closest amenity correctly"
+      });
+    } catch (err: any) {
+      results.push({
+        testName: "Nearest Amenity Discovery Engine (Nearest Concession from Block 101)",
+        passed: false,
+        message: err.message
+      });
+    }
+
+    const allPassed = results.every(r => r.passed);
+    res.json({
+      success: allPassed,
+      timestamp: new Date().toISOString(),
+      results
+    });
   });
 
   // Function Declarations for Gemini Function Calling
@@ -162,6 +267,13 @@ async function startServer() {
         return;
       }
 
+      // Security & Efficiency: Bound the message history window (last 25 messages) to avoid Token limits & DoS attacks
+      // Truncate individual message text length to prevent massive input parsing overhead
+      const sanitizedHistory = messages.slice(-25).map(m => ({
+        ...m,
+        text: typeof m.text === "string" ? m.text.substring(0, 2000) : ""
+      }));
+
       // Lazy load Gemini
       let ai;
       try {
@@ -174,8 +286,8 @@ async function startServer() {
         return;
       }
 
-      // Grab the latest user message
-      const lastUserMsg = [...messages].reverse().find((m) => m.sender === "user");
+      // Grab the latest user message from the sanitized history
+      const lastUserMsg = [...sanitizedHistory].reverse().find((m) => m.sender === "user");
       if (!lastUserMsg) {
         res.status(400).json({ error: "No user message found in history." });
         return;

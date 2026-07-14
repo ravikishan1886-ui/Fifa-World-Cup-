@@ -197,6 +197,11 @@ export const StadiumMap: React.FC<StadiumMapProps> = ({
         const isDest = node.id === destNodeId;
         const isPartOfPath = activePath?.includes(node.id);
 
+        let selectionState = "Unselected";
+        if (isOrigin) selectionState = "Start Location (Origin)";
+        else if (isDest) selectionState = "Destination";
+        else if (isPartOfPath) selectionState = "Part of Active Nav Path";
+
         return (
           <div
             key={node.id}
@@ -213,9 +218,19 @@ export const StadiumMap: React.FC<StadiumMapProps> = ({
             <button
               id={`node-${node.id}`}
               onClick={() => onSelectNode(node.id)}
+              onFocus={() => setHoveredNode(node)}
+              onBlur={() => setHoveredNode(null)}
               onMouseEnter={() => setHoveredNode(node)}
               onMouseLeave={() => setHoveredNode(null)}
-              className={`flex items-center justify-center w-7 h-7 rounded-full border transition-all duration-300 cursor-pointer ${getNodeColor(node)}`}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  onSelectNode(node.id);
+                }
+              }}
+              tabIndex={0}
+              aria-label={`${node.name}, ${node.type}. Step-free access: ${node.step_free ? 'Available' : 'Unavailable (Stairs Required)'}. State: ${selectionState}. Press Enter or Space to set.`}
+              className={`flex items-center justify-center w-7 h-7 rounded-full border transition-all duration-300 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500 ${getNodeColor(node)}`}
               title={`${node.name} (${node.type})`}
             >
               {renderNodeIcon(node.type, 13)}

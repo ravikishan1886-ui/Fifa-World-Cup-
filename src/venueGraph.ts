@@ -122,6 +122,9 @@ export const stadiumGraph: VenueGraph = {
   ],
 };
 
+// Highly efficient pre-computed O(1) Map for lookups
+export const stadiumNodesMap = new Map(stadiumGraph.nodes.map((n) => [n.id, n]));
+
 /**
  * Dijkstra shortest-path function
  * @param origin Start node ID
@@ -175,15 +178,14 @@ function calculateDijkstra(
   crowdStatus?: Record<string, "low" | "medium" | "high">
 ): PathResult | null {
   const { nodes, edges } = stadiumGraph;
-  const nodesMap = new Map(nodes.map((n) => [n.id, n]));
-  const originNode = nodesMap.get(origin);
-  const destNode = nodesMap.get(destination);
+  const originNode = stadiumNodesMap.get(origin);
+  const destNode = stadiumNodesMap.get(destination);
 
   if (!originNode || !destNode) return null;
 
   const isNodeAllowed = (nodeId: string): boolean => {
     if (!step_free_only) return true;
-    const node = nodesMap.get(nodeId);
+    const node = stadiumNodesMap.get(nodeId);
     if (!node) return false;
     if (nodeId === origin || nodeId === destination) return true;
     return node.step_free;
@@ -278,7 +280,7 @@ function calculateDijkstra(
     current = previous.get(current) ?? null;
   }
 
-  const isFullyStepFree = path.every((nodeId) => nodesMap.get(nodeId)?.step_free ?? false);
+  const isFullyStepFree = path.every((nodeId) => stadiumNodesMap.get(nodeId)?.step_free ?? false);
 
   // Compute the exact physical seconds walked (excluding penalties)
   let physicalSeconds = 0;

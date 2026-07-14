@@ -42,6 +42,28 @@ export default function App() {
   const [currentLanguage, setCurrentLanguage] = useState<SupportedLanguage>('auto');
   const [apiKeyError, setApiKeyError] = useState<boolean>(false);
 
+  // Diagnostic Test States
+  const [testResults, setTestResults] = useState<any>(null);
+  const [testingLoading, setTestingLoading] = useState<boolean>(false);
+  const [showTestPanel, setShowTestPanel] = useState<boolean>(false);
+
+  const runDiagnostics = async () => {
+    setTestingLoading(true);
+    setShowTestPanel(true);
+    try {
+      const response = await fetch('/api/test');
+      const data = await response.json();
+      setTestResults(data);
+    } catch (err: any) {
+      setTestResults({
+        success: false,
+        results: [{ testName: "Diagnostic endpoint query", passed: false, message: err.message }]
+      });
+    } finally {
+      setTestingLoading(false);
+    }
+  };
+
   // Sync accessibility mode with stepFreeOnly
   useEffect(() => {
     if (accessibilityMode) {
@@ -339,6 +361,20 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-3">
+            {/* System Diagnostics Trigger */}
+            <button
+              id="diagnostics-test-button"
+              onClick={runDiagnostics}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-black transition-all cursor-pointer ${
+                showTestPanel 
+                  ? 'bg-green-100 border-green-300 text-green-950 shadow-md' 
+                  : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              <Check className="w-4 h-4 text-green-600" />
+              <span>DIAGNOSTICS</span>
+            </button>
+
             {/* Accessibility Enhancer Badge toggle */}
             <button
               onClick={() => setAccessibilityMode(!accessibilityMode)}
@@ -368,6 +404,55 @@ export default function App() {
           </div>
         </div>
       </header>
+
+      {/* System Diagnostics Test Panel Drawer */}
+      {showTestPanel && (
+        <div className="bg-green-50/70 border-b border-green-200 py-4 shadow-inner text-left">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex flex-col space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="text-left">
+                  <h3 className="text-xs font-black text-green-900 tracking-wider uppercase flex items-center gap-1.5">
+                    <Check className="w-4 h-4 text-green-600" /> System Integrity & Dijkstra Pathfinding Tests
+                  </h3>
+                  <p className="text-[11px] text-green-700 font-medium leading-relaxed mt-0.5">
+                    Automatically verifies navigation engine accuracy, accessibility locks, and crowd density algorithms.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowTestPanel(false)}
+                  className="bg-white/50 hover:bg-white text-green-800 border border-green-200 px-3 py-1 rounded-full text-[10px] font-black cursor-pointer transition-all"
+                >
+                  Close Panel
+                </button>
+              </div>
+
+              {testingLoading ? (
+                <div className="text-left py-2 flex items-center gap-2 text-xs font-bold text-green-800">
+                  <div className="w-4 h-4 rounded-full border-2 border-green-600 border-t-transparent animate-spin"></div>
+                  <span>Running automated routing assertions and integrity tests...</span>
+                </div>
+              ) : testResults ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 w-full">
+                  {testResults.results?.map((res: any, idx: number) => (
+                    <div key={idx} className="bg-white border border-green-100 p-3 rounded-xl shadow-xs text-left flex flex-col justify-between">
+                      <div>
+                        <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${res.passed ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                          {res.passed ? 'Passed ✓' : 'Failed ✗'}
+                        </span>
+                        <h4 className="text-xs font-bold text-slate-800 mt-2 leading-tight">{res.testName}</h4>
+                      </div>
+                      <p className="text-[10px] text-slate-500 font-semibold leading-relaxed mt-1.5">
+                        {res.message}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Hidden Live Crowd Control Panel Drawer */}
       {showCrowdPanel && (
